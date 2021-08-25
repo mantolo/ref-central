@@ -1,0 +1,23 @@
+{
+  "name": "ref-central",
+  "version": "0.0.0",
+  "description": "ECMAScript module storing reference of anykind, with intuitive interfaces",
+  "main": "index.js",
+  "type": "module",
+  "repository": {
+    "url": ""
+  },
+  "scripts": {
+    "eslint": "eslint ./*.js --fix",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --no-cache --config=jest.config.mjs",
+    "inittest": "jest --init "
+  },
+  "author": "mantolo",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "*",
+    "eslint-plugin-jsdoc": "*",
+    "jest": "^27.0.6"
+  },
+  "dependencies": {}
+}
