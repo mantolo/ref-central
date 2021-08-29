@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "repository": {
-    "url": ""
+    "url": "https://github.com/mantolo/ref-central"
   },
   "scripts": {
     "eslint": "eslint ./*.js --fix",
