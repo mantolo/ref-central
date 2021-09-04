@@ -130,7 +130,7 @@
         "allowElseIf": true
       }
     ],
-    "no-empty-function": "error",
+    "no-empty-function": ["error", { "allow": ["arrowFunctions"] }],
     "no-eq-null": "error",
     "no-eval": "error",
     "no-extend-native": "error",

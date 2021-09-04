@@ -1,22 +1,43 @@
 {
   "name": "ref-central",
-  "version": "0.0.1",
-  "description": "ECMAScript module storing reference of anykind, with intuitive interfaces",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "A light-weighted ECMAScript module for use in both node / browser environment with reference storage and variety of fast pub / sub signaling interfaces",
+  "main": "./index.cjs",
+  "module": "./index.js",
   "type": "module",
+  "files": [
+    "index.js",
+    "index.cjs",
+    "proxy.js"
+  ],
   "repository": {
+    "type": "git",
     "url": "https://github.com/mantolo/ref-central"
   },
   "scripts": {
+    "prepublishOnly": "esbuild index.js --bundle --platform=node --metafile=meta.json --outfile=index.cjs",
     "eslint": "eslint ./*.js --fix",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --no-cache --config=jest.config.mjs"
   },
   "author": "mantolo",
   "license": "MIT",
-  "keywords": ["addListener", "pub/sub", "once", "event", "listener", "subscribe", "promise", "when", "proxy", "reactor", "global-variable"],
+  "keywords": [
+    "addListener",
+    "pub/sub",
+    "once",
+    "event",
+    "listener",
+    "subscribe",
+    "promise",
+    "when",
+    "proxy",
+    "reactor",
+    "global-variable"
+  ],
   "devDependencies": {
     "eslint": "*",
     "eslint-plugin-jsdoc": "*",
+    "esbuild": "*",
     "jest": "^27.0.6"
   },
   "dependencies": {}
