@@ -72,39 +72,15 @@ setRef("eventName", { target: "some target", data: { ... }  })
 // event-b { target: "some target", data: { ... }  }
 ```
 
-What's different between event listener and ref-central is, the former subscribe event permanently, the later subscribe only just once. The idea is to encourage write ___subscribing as necessary code___. If you really need to subscribe `eventName` continously, you should consider using `observeRef()`.
-
-### Observer
+What's different between event listener and ref-central is, the former subscribe event permanently, the later subscribe only just once. The idea is to encourage write ___subscribing as necessary code___. If you need to subscribe `eventName` continously, just do this:
 
 ```javascript
-import { observeRef, setRef } from "ref-central";
+import { getRef, getNextRef } from "ref-central";
 
-const observer = observeRef("refName");
-
-const removeListener = observer.addListener((ref) => {
-  console.log(ref);
-});
-
-observer.start();
-
-// ...
-
-setRef("refName", "one");
-setRef("refName", "two");
-observer.stop();
-setRef("refName", "three");
-observer.start();
-setRef("refName", "four");
-removeListener();
-setRef("refName", "five");
-
-// prints
-// one
-// two
-// four
+getRef("eventName", (ref, param, name, context) => {
+  getNextRef("eventName", context, RefTypes.Any, param); // subscribe to only next ref with context which is identical function to current callback
+}, RefTypes.Any);
 ```
-
-It's not encouraged to use `observeRef()` over `getRef()` / `whenRef()` without absolute necessity as it requires manual removal, and it's easy enough to forget removal when implementing complex logic
 
 ### Promise
 
@@ -125,15 +101,21 @@ whenRef("someRef").then((ref) => {
 })
 ```
 
-### Promise-limited feature
+You may also subscribe with promise to __only__ next `setRef()` with `whenNextRef()`, or when it's being removed by `removeRef()` with `whenRefRemoved()`
 
 ```javascript
-import { whenRefRemoved } from "ref-central";
+import { whenRefRemoved, whenNextRef } from "ref-central";
 
 whenRefRemoved("refToBeRemoved").then((ref) => {
   // Called when removeRef("refToBeRemoved") successfully removed the ref
   // ...  
-}); 
+});
+
+whenNextRef("refToSetAgain").then((ref) => {
+  // Called when additional setRef("refToSetAgain") is called
+  // ...
+});
+
 ```
 
 ## Misc

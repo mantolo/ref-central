@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "@jest/globals";
 import {
   createRefType,
+  getNextRef,
   getRef,
   getRefMap,
-  observeRef,
   RefTypes,
   removeRef,
   setRef,
@@ -11,7 +11,7 @@ import {
   whenRefRemoved,
 } from "./index.js";
 
-describe("Basic ref central", () => {
+describe.only("Basic ref central", () => {
 
   beforeEach(() => {
     Object.values(RefTypes).forEach(refType => {
@@ -77,11 +77,22 @@ describe("Basic ref central", () => {
     ]);
   });
 
-  test("remove ref", () => {
+  test("get next", () => {
+    setRef("nextRef", { existing: "value" });
+    getNextRef("nextRef", ref => {
+      expect(ref).toEqual({ nextExisting: "value.next" });
+    }, RefTypes.Any, { parmProp: "paramValue" });
+    setRef("nextRef", { nextExisting: "value.next" });
+  });
+
+  test("remove ref", async () => {
     expect(whenRefRemoved("predefined")).resolves.toEqual({ payload: "somedata" });
     setRef("predefined", { payload: "somedata" });
     expect(getRef("predefined")).toEqual({ payload: "somedata" });
-    removeRef("predefined");
+    setTimeout(() => {
+      removeRef("predefined");
+    }, 0);
+    await whenRefRemoved("predefined");
     expect(getRef("predefined")).toBeNull();
   });
 
@@ -136,43 +147,4 @@ describe("Basic ref central", () => {
         done();
       });
   });
-
-  test("observer basic", () => {
-    const observer = observeRef("some little ref");
-
-    expect(observer.refType).toBe(RefTypes.Any);
-    expect(observer.name).toBe("some little ref");
-
-    // Call safety check
-    observer.start();
-    observer.start();
-    observer.stop();
-    observer.stop();
-    observer.flush();
-    observer.flush();
-
-    const remove = observer.addListener((ref, old, param, refName) => {
-      expect(ref.type).toBe("little ref");
-      expect(param).toEqual({ staticPayload: "staticPayload" });
-      expect(refName).toBe("some little ref");
-      expect(old).not.toEqual(ref);
-    }, { staticPayload: "staticPayload" });
-
-    expect(remove).toBeInstanceOf(Function);
-
-    setRef("some little ref", { type: "little ref", payload: "some ref data" });
-    observer.start(true);
-    expect(observer.value).toEqual({ type: "little ref", payload: "some ref data" });
-    setRef("some little ref", { type: "little ref", payload: "some other ref data" });
-    expect(observer.value).toEqual({ type: "little ref", payload: "some other ref data" });
-    observer.stop();
-    observer.flush();
-    setRef("some little ref", { type: "little tiny ref", payload: "irrelavent data" }); // this won't print
-    expect(observer.value).toEqual({ type: "little tiny ref", payload: "irrelavent data" }); // value still change
-    remove();
-    observer.start(true);
-    setRef("some little ref", { type: "you can not hear me!", payload: "blah blah" });
-
-  });
-
 });

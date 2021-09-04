@@ -10,28 +10,40 @@ export const RefTypes = {
 /**
  * Get map of a specific type
  *
- * @param {number} type type of ref
+ * @param {number} refType type of ref
  * @returns {Map} existing / new map ref
  */
-export const getRefMap = type => {
-  if (refTypeMap.has(type)) {
-    return refTypeMap.get(type);
+export const getRefMap = refType => {
+  if (refTypeMap.has(refType)) {
+    return refTypeMap.get(refType);
   }
 
-  const newMap = new Map();
-  refTypeMap.set(type, newMap);
-  return newMap;
+  const map = new Map();
+  refTypeMap.set(refType, map);
+
+  return map;
 };
 
 /**
  * ES6 Promise version of getRef
  *
  * @param {string} name string identifier to exchange to ref
- * @param {number} type Ref type
+ * @param {number} refType Ref type
  * @returns {Promise} resolves to ref
  */
-export const whenRef = (name, type) => new Promise(resolve => {
-  getRef(name, resolve, type);
+export const whenRef = (name, refType) => new Promise(resolve => {
+  getRef(name, resolve, refType);
+});
+
+/**
+ * Creates a promise that resolve when next ref is set
+ *
+ * @param {string} name ref name
+ * @param {number} refType ref type
+ * @returns {Promise} resolves to next ref
+ */
+export const whenNextRef = (name, refType = RefTypes.Any) => new Promise(resolve => {
+  getNextRef(name, resolve, refType);
 });
 
 /**
@@ -39,16 +51,11 @@ export const whenRef = (name, type) => new Promise(resolve => {
  *
  * @param {string} name Ref name
  * @param {number} type Ref type
+ * @param refType
  * @returns {Promise} resolves to ref value at the moment being removed
  */
-export const whenRefRemoved = (name, type = RefTypes.Any) => new Promise(res => {
-  const signature = `${type}_${name}`;
-
-  if (!Array.isArray(removeWaitingMap[signature])) {
-    removeWaitingMap[signature] = [];
-  }
-
-  removeWaitingMap[signature].push(res);
+export const whenRefRemoved = (name, refType = RefTypes.Any) => new Promise(resolve => {
+  getRemoveRef(name, resolve, refType);
 });
 
 /**
@@ -56,51 +63,53 @@ export const whenRefRemoved = (name, type = RefTypes.Any) => new Promise(res => 
  *
  * @param {string|Array} name identity of this ref, Array of strings can be provided to get multiple refs of a kind
  * @param {Function?} getter (ref) => {}, to be called once ref becomes available now or later, this can be omitted,
- * @param {number} type target type of this ref
+ * @param {number} refType target type of this ref
+ * @param refType
  * @param {*} param to pass as second param in getter
  * @returns {null|*} target ref, could be null if not found
  */
 export const getRef = (
   name,
   getter = null,
-  type = RefTypes.Any,
+  refType = RefTypes.Any,
   param = null,
 ) => {
   if (Array.isArray(name)) {
+    const arr = [...name];
     let expected = name.length;
     let wait = false;
     const agetter = (instance, i) => {
-      name[i] = instance;
+      arr[i] = instance;
       if (!--expected && getter) {
-        getter(name, param);
+        getter(arr, param, name, getter);
       }
     };
 
     for (let i = 0, len = expected; i < len; i++) {
-      const refName = name[i];
-      if ((name[i] = getRef(refName, null, type)) && name[i] !== null) {
+      const refName = arr[i];
+      if ((arr[i] = getRef(refName, null, refType)) && arr[i] !== null) {
         expected--;
       } else {
         wait = true;
-        name[i] = getRef(refName, agetter, type, i);
+        arr[i] = getRef(refName, agetter, refType, i);
       }
     }
 
     if (wait) {
       return null;
     } else if (getter) {
-      getter(name, param);
+      getter(arr, param, name, getter);
     }
 
-    return name;
+    return arr;
   }
 
-  const mapOfTheType = getRefMap(type);
+  const mapOfTheType = getRefMap(refType);
   if (mapOfTheType.has(name)) {
     // reference already exist - immediately invoke getter callback
     const result = mapOfTheType.get(name);
     if (getter) {
-      getter(result, param, name);
+      getter(result, param, name, getter);
     }
     return result;
   }
@@ -110,13 +119,56 @@ export const getRef = (
     return null;
   }
 
-  const signature = `${type}_${name}`;
-  if (!waitingMap[signature]) {
-    waitingMap[signature] = []; // creates waiting list for this type and name
+  const signature = `${refType}_${name}`;
+
+  if (!waitingMap[signature]?.push(getter, param)) {
+    waitingMap[signature] = [getter, param];
   }
 
-  waitingMap[signature].push(getter, param);
   return null;
+};
+
+/**
+ * Not getting current existing ref, but next setRef()
+ *
+ * @param {string} name ref name
+ * @param {Function} getter ref getter function
+ * @param {number} refType ref type
+ * @param {*} param any
+ * @returns nothing
+ */
+export const getNextRef = (name, getter, refType = RefTypes.Any, param = null) => {
+  if (!getter?.call) {
+    return;
+  }
+
+  const signature = `${refType}_${name}`;
+  getRefMap(refType);
+  if (!waitingMap[signature]?.push(getter, param)) {
+    waitingMap[signature] = [getter, param];
+  }
+
+};
+
+/**
+ * Get ref only when it's being removed
+ *
+ * @param {string} name ref name
+ * @param {Function} getter the getter function
+ * @param {number} refType ref type
+ * @param {*} param anything to pass as getter function 2nd callback
+ * @returns nothing
+ */
+export const getRemoveRef = (name, getter, refType = RefTypes.Any, param = null) => {
+  if (!getter?.call) {
+    return;
+  }
+
+  const signature = `${refType}_${name}`;
+  getRefMap(refType);
+  if (!removeWaitingMap[signature]?.push(getter, param)) {
+    removeWaitingMap[signature] = [getter, param];
+  }
 };
 
 /**
@@ -124,14 +176,13 @@ export const getRef = (
  *
  * @param {string} name identity of this ref
  * @param {*} ref any ref you want to save
- * @param {number} type type of this ref
+ * @param {number} refType type of this ref
  * @returns {*} ref anything saved
  */
-export const setRef = (name, ref, type = RefTypes.Any) => {
-  const mapOfTheType = getRefMap(type);
+export const setRef = (name, ref, refType = RefTypes.Any) => {
+  const mapOfTheType = getRefMap(refType);
   mapOfTheType.set(name, ref);
-
-  const signature = `${type}_${name}`;
+  const signature = `${refType}_${name}`;
   if (!waitingMap[signature]) {
     return ref;
   }
@@ -141,11 +192,10 @@ export const setRef = (name, ref, type = RefTypes.Any) => {
   for (let len = waitingList.length; len > 0; len -= 2) {
     const lGetter = waitingList.shift();
     const lParam = waitingList.shift();
-    lGetter(ref, lParam, name);
+    lGetter(ref, lParam, name, lGetter);
   }
 
   if (!(0 in waitingList)) {
-    // Reuse waiting list
     waitingMap[signature] = null;
   }
   return ref;
@@ -155,18 +205,21 @@ export const setRef = (name, ref, type = RefTypes.Any) => {
  * Remove ref from map of given ref type
  *
  * @param {string} name ref name
- * @param {?number} type optional type of refs
+ * @param {?number} refType optional type of refs
  * @returns {*} the removed ref
  */
-export const removeRef = (name, type = RefTypes.Any) => {
-  const mapOfTheType = getRefMap(type);
-  if (mapOfTheType && mapOfTheType.has(name)) {
-    const signature = `${type}_${name}`;
+export const removeRef = (name, refType = RefTypes.Any) => {
+  const mapOfTheType = getRefMap(refType);
+  if (mapOfTheType.has(name)) {
+    const signature = `${refType}_${name}`;
     const result = mapOfTheType.get(name);
+    const waitingList = removeWaitingMap[signature];
     mapOfTheType.delete(name);
-    if (Array.isArray(removeWaitingMap[signature])) {
-      for (let len = removeWaitingMap[signature].length; len > 0; len--) {
-        removeWaitingMap[signature].shift()(result);
+    if (Array.isArray(waitingList)) {
+      for (let len = waitingList.length; len > 0; len -= 2) {
+        const fn = waitingList.shift();
+        const param = waitingList.shift();
+        fn(result, param);
       }
     }
     return result;
@@ -191,142 +244,4 @@ export const createRefType = name => {
   RefTypes[name] = nextCollectionId;
   return nextCollectionId;
 };
-
-let observers = null;
-
-/**
- * Observe ref activities and return observer object to control it, observer is defaulting stop
- *
- * @param {string} name name of the reference
- * @param {?number} refType Type of ref, default Any
- * @param {?object} observersMap output object
- * @returns {object} control object of the observer { start(), stop(), flush(), addListener(), name, value }
- */
-export const observeRef = (
-  name,
-  refType = RefTypes.Any,
-  observersMap = observers,
-) => {
-  if (observers === null) {
-    observers = {};
-  }
-
-  if (observersMap === null) {
-    return observeRef(name, refType);
-  }
-
-  const signature = `${refType}_${name}`;
-
-  if (signature in observersMap) {
-    return observersMap[signature].observer;
-  }
-
-  let isStopped = true;
-
-  const signal = (ref, old, refName) => {
-    if (isStopped) {
-      return;
-    }
-    const { listeners } = obj;
-
-    if (Array.isArray(waitingMap[signature]) === false) {
-      waitingMap[signature] = [];
-    }
-
-    waitingMap[signature].push(signal, ref); // wait next
-
-    // Notify listeners
-    for (let i = 0, len = listeners.length; i < len; i += 3) {
-      if ("call" in listeners[i + 1]) {
-        listeners[i + 1](ref, old, listeners[i + 2], refName);
-      } else {
-        // String type
-        getRef(listeners[i + 1])(ref, old, listeners[i + 2], refName);
-      }
-    }
-  };
-
-  const obj = {
-    listeners: [],
-    observer: {
-      refType,
-      name,
-      get value() {
-        return getRef(name, null, refType);
-      },
-
-      /**
-       * Flush (setRef) again when possible
-       */
-      flush() {
-        const dat = getRef(name, null, refType);
-        if (dat !== null) {
-          setRef(name, dat, refType);
-        }
-      },
-
-      /**
-       * Start the observer, when ref changes, all listeners fires
-       *
-       * @param {boolean} [withFlush=false] whether to setRef or not
-       */
-      start: (withFlush = false) => {
-        if (isStopped === false) {
-          return;
-        }
-
-        isStopped = false;
-        const dat = getRef(name, null, refType);
-        if (withFlush !== true && dat !== null) {
-          getRefMap(refType).delete(name);
-        }
-        getRef(name, signal, refType, withFlush === true ? null : dat);
-        if (withFlush !== true && dat !== null) {
-          getRefMap(refType).set(name, dat); // Pretend the data exist after _signal_ has been put in waiting list
-        }
-      },
-
-      /**
-       * Stop the observer
-       */
-      stop: () => {
-        if (isStopped === true) {
-          return;
-        }
-
-        isStopped = true;
-        if (Array.isArray(waitingMap[signature])) {
-          let idx = -1;
-          while ((idx = waitingMap[signature].indexOf(signal)) > -1) {
-            waitingMap[signature].splice(idx, 2);
-          }
-        }
-      },
-
-      /**
-       * Add a persisting listener to this observer
-       *
-       * @param {Function|string} fn Stream function to handle every `setRef()`, expects `(ref, old, param, refName) => {}`
-       * @param {*} param A thing to be brought back as 3rd param in `fnStream`
-       * @returns {Function} function to remove this listener
-       */
-      addListener: (fn, param = null) => {
-        const symbol = Symbol(`listener_${Date.now()}`);
-        obj.listeners.push(symbol, fn, param);
-        // Return remove listener
-        return () => {
-          let idx = -1;
-          while ((idx = obj.listeners.indexOf(symbol)) > -1) {
-            obj.listeners.splice(idx, 3);
-          }
-        };
-      },
-    },
-  };
-
-  observersMap[signature] = obj;
-
-  return obj.observer;
-};
-
 export { createRefProxy } from "./proxy.js";
