@@ -1,12 +1,18 @@
 import { describe, expect, test } from "@jest/globals";
-import { getRef, RefTypes, setRef } from "./index.js";
 import { createRefProxy } from "./proxy.js";
 import crypto from "crypto";
 import { performance } from "perf_hooks";
+import ref from "./index.js";
+
+const refAPI = ref();
+const {
+  getRef,
+  setRef,
+} = refAPI;
 
 describe("Proxy", () => {
   test("create proxy", () => {
-    const p = createRefProxy();
+    const p = createRefProxy(refAPI);
     p.gg = "abc";
     p.testing = 1234;
 
@@ -34,16 +40,16 @@ describe("Proxy", () => {
 
   test("reuse", () => {
 
-    expect(createRefProxy()).not.toBe(createRefProxy());
+    expect(createRefProxy(refAPI)).not.toBe(createRefProxy(refAPI));
 
     const target = {};
 
-    expect(createRefProxy(RefTypes.Any, target)).toBe(createRefProxy(RefTypes.Any, target));
+    expect(createRefProxy(refAPI, target)).toBe(createRefProxy(refAPI, target));
   });
 
   test("intensive call speed", () => {
     const sampleRate = 500000;
-    const p = createRefProxy();
+    const p = createRefProxy(refAPI);
 
     const tuples = new Array(sampleRate)
       .fill("")
@@ -51,7 +57,7 @@ describe("Proxy", () => {
 
     getRef(tuples[0][0], () => {
       console.log(`${sampleRate} operations took ${performance.now() - start}ms`); // eslint-disable-line no-console
-    }, RefTypes.Any);
+    });
 
     const start = performance.now();
     for (let len = tuples.length; len > 0; len--) {

@@ -1,29 +1,27 @@
-import { getRef, RefTypes, removeRef, setRef } from "./index.js";
-
 const proxyMap = new WeakMap();
 
 class RefProxyHandler {
-  constructor(refType) {
-    this.refType = refType;
+  constructor(refAPI) {
+    this.refAPI = refAPI;
   }
 
   get(obj, prop) {
-    return getRef(prop, null, this.refType);
+    return this.refAPI.getRef(prop);
   }
 
   set(obj, prop, value) {
-    obj[prop] = setRef(prop, value, this.refType);
+    obj[prop] = this.refAPI.setRef(prop, value);
     return true;
   }
 
   has(obj, key) {
-    return getRef(key, null, this.refType) !== null;
+    return this.refAPI.getRef(key) !== null;
   }
 
   deleteProperty(obj, prop) {
     if (prop in obj) {
       delete obj[prop];
-      removeRef(prop, this.refType);
+      this.refAPI.unsetRef(prop);
       return true;
     }
     return false;
@@ -33,20 +31,20 @@ class RefProxyHandler {
 /**
  * Creates a proxy instance to ease get / set / remove operations to be like object assignments
  *
- * @param {number} refType optional. default using Any channel
+ * @param {object} refAPI RefAPI instance
  * @param {object} target optional. target object to be proxified, you may set properties and values to sync inital refs
  * @returns {Proxy} proxy object help to manipulate ref
  */
-export const createRefProxy = (refType = RefTypes.Any, target = {}) => {
+export const createRefProxy = (refAPI, target = {}) => {
   for (const k in target) {
-    setRef(k, target[k], refType);
+    refAPI.setRef(k, target[k]);
   }
 
   if (proxyMap.has(target)) {
     return proxyMap.get(target);
   }
 
-  const proxy = new Proxy(target, new RefProxyHandler(refType));
+  const proxy = new Proxy(target, new RefProxyHandler(refAPI));
   proxyMap.set(target, proxy);
 
   return proxy;

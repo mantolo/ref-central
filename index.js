@@ -1,11 +1,12 @@
+/*
+ * TODO: make it react hook?
+ * TODO: middlewares
+ */
+import { createRefProxy } from "./proxy.js";
+
 const refTypeMap = new Map();
 const waitingMap = {};
 const removeWaitingMap = {};
-
-// Expending types
-export const RefTypes = {
-  Any: 0,
-};
 
 /**
  * Get map of a specific type
@@ -13,7 +14,7 @@ export const RefTypes = {
  * @param {number} refType type of ref
  * @returns {Map} existing / new map ref
  */
-export const getRefMap = refType => {
+const getRefMap = refType => {
   if (refTypeMap.has(refType)) {
     return refTypeMap.get(refType);
   }
@@ -31,7 +32,7 @@ export const getRefMap = refType => {
  * @param {number} refType Ref type
  * @returns {Promise} resolves to ref
  */
-export const whenRef = (name, refType) => new Promise(resolve => {
+const whenRef = (name, refType) => new Promise(resolve => {
   getRef(name, resolve, refType);
 });
 
@@ -42,20 +43,19 @@ export const whenRef = (name, refType) => new Promise(resolve => {
  * @param {number} refType ref type
  * @returns {Promise} resolves to next ref
  */
-export const whenNextRef = (name, refType = RefTypes.Any) => new Promise(resolve => {
+const whenNextRef = (name, refType = 0) => new Promise(resolve => {
   getNextRef(name, resolve, refType);
 });
 
 /**
- * Promise version that wait for `removeRef()` and resolves to the last ref value
+ * Promise version that wait for `unsetRef()` and resolves to the last ref value
  *
  * @param {string} name Ref name
- * @param {number} type Ref type
- * @param refType
+ * @param {number?} refType Ref type
  * @returns {Promise} resolves to ref value at the moment being removed
  */
-export const whenRefRemoved = (name, refType = RefTypes.Any) => new Promise(resolve => {
-  getRemoveRef(name, resolve, refType);
+const whenRefUnset = (name, refType = 0) => new Promise(resolve => {
+  getUnsetRef(name, resolve, refType);
 });
 
 /**
@@ -64,14 +64,13 @@ export const whenRefRemoved = (name, refType = RefTypes.Any) => new Promise(reso
  * @param {string|Array} name identity of this ref, Array of strings can be provided to get multiple refs of a kind
  * @param {Function?} getter (ref) => {}, to be called once ref becomes available now or later, this can be omitted,
  * @param {number} refType target type of this ref
- * @param refType
- * @param {*} param to pass as second param in getter
- * @returns {null|*} target ref, could be null if not found
+ * @param {any} param to pass as second param in getter
+ * @returns {null|any} target ref, could be null if not found
  */
-export const getRef = (
+const getRef = (
   name,
   getter = null,
-  refType = RefTypes.Any,
+  refType = 0,
   param = null,
 ) => {
   if (Array.isArray(name)) {
@@ -135,9 +134,9 @@ export const getRef = (
  * @param {Function} getter ref getter function
  * @param {number} refType ref type
  * @param {*} param any
- * @returns nothing
+ * @returns {void} nothing
  */
-export const getNextRef = (name, getter, refType = RefTypes.Any, param = null) => {
+const getNextRef = (name, getter, refType = 0, param = null) => {
   if (!getter?.call) {
     return;
   }
@@ -157,9 +156,9 @@ export const getNextRef = (name, getter, refType = RefTypes.Any, param = null) =
  * @param {Function} getter the getter function
  * @param {number} refType ref type
  * @param {*} param anything to pass as getter function 2nd callback
- * @returns nothing
+ * @returns {void} nothing
  */
-export const getRemoveRef = (name, getter, refType = RefTypes.Any, param = null) => {
+const getUnsetRef = (name, getter, refType = 0, param = null) => {
   if (!getter?.call) {
     return;
   }
@@ -175,11 +174,11 @@ export const getRemoveRef = (name, getter, refType = RefTypes.Any, param = null)
  * Add / Set / Save an ref by ref providers
  *
  * @param {string} name identity of this ref
- * @param {*} ref any ref you want to save
+ * @param {any} ref any ref you want to save
  * @param {number} refType type of this ref
- * @returns {*} ref anything saved
+ * @returns {any} ref anything saved
  */
-export const setRef = (name, ref, refType = RefTypes.Any) => {
+const setRef = (name, ref, refType = 0) => {
   const mapOfTheType = getRefMap(refType);
   mapOfTheType.set(name, ref);
   const signature = `${refType}_${name}`;
@@ -208,7 +207,7 @@ export const setRef = (name, ref, refType = RefTypes.Any) => {
  * @param {?number} refType optional type of refs
  * @returns {*} the removed ref
  */
-export const removeRef = (name, refType = RefTypes.Any) => {
+const unsetRef = (name, refType = 0) => {
   const mapOfTheType = getRefMap(refType);
   if (mapOfTheType.has(name)) {
     const signature = `${refType}_${name}`;
@@ -227,21 +226,104 @@ export const removeRef = (name, refType = RefTypes.Any) => {
   return null;
 };
 
-/**
- * Create a new ref type id, if the name is existed, it will return existed type
- *
- * @param {string} name Ref type name
- * @returns {number} new ref type Id
- */
-export const createRefType = name => {
-  if (RefTypes[name]) {
-    return RefTypes[name];
-  }
+let typeCount = 0;
 
-  const nextCollectionId =
-    (RefTypes._current || Math.max(...Object.values(RefTypes))) + 1;
-  RefTypes._current = nextCollectionId;
-  RefTypes[name] = nextCollectionId;
-  return nextCollectionId;
+export default fnInit => {
+  const typeId = typeCount++;
+
+  // The Ref interface
+  const api = {
+    typeId,
+
+    /**
+     * Obtain ref, if ref exist, it will both return and callback the ref synchronously, if ref doesn't already exist, only callback will be called when `setRef` is invoked else where
+     *
+     * @param {string|Array} nameOrDeps identity of this ref, Array of strings can be provided to get multiple refs of a kind
+     * @param {Function?} getter (ref) => {}, to be called once ref becomes available now or later, this can be omitted
+     * @param {any} param to pass as second param in getter
+     * @returns {null|any} target ref, could be null if not found
+     */
+    getRef: (nameOrDeps, getter, param) => getRef(nameOrDeps, getter, typeId, param),
+    getNextRef: (name, getter, param) => getNextRef(name, getter, typeId, param),
+
+    /**
+     * Listen to changes of target ref identity, starting only from next `setRef`
+     *
+     * @param {string} name identity of target ref caller wants to listen
+     * @param {Function} getter (ref) => {}, to be called each per target ref change until remove listener function is called
+     * @param {any} param optional, extra param to bind with the given getter callback
+     * @returns {Function} remove listener
+     */
+    listenRef: (name, getter, param) => {
+      let isEnded = false;
+      const refCallback = (data, lParam, refName, lGetter) => {
+
+        if (isEnded) {
+          return;
+        }
+
+        getNextRef(refName, lGetter, typeId, lParam);
+        getter(data, lParam, refName, lGetter);
+      };
+
+      getNextRef(name, refCallback, typeId, param);
+
+      return () => {
+        isEnded = true;
+      };
+    },
+
+    /**
+     * Get ref when it's being removed i.e. related `unsetRef` is called
+     *
+     * @param {string} name ref name
+     * @param {Function} getter the getter function
+     * @param {*} param anything to pass as getter function 2nd callback
+     * @returns {void}
+     */
+    getUnsetRef: (name, getter, param) => getUnsetRef(name, getter, typeId, param),
+
+    /**
+     * Add / Set / Save an ref, this will trigger relative `getRef` callbacks, you may
+     *
+     * @param {string} name identity of this ref
+     * @param {any} data any ref you want to save
+     * @param {number?} ttl optional, time-to-live for this ref, in seconds
+     * @returns {any} ref anything saved
+     */
+    setRef: (name, data, ttl) => {
+      if (typeof ttl === "number" && ttl > 0) {
+        setTimeout(() => {
+          unsetRef(name, typeId);
+        }, ttl * 1000);
+      }
+      return setRef(name, data, typeId);
+    },
+
+    /**
+     * Remove ref, this will essentially trigger `getUnsetRef` callbacks
+     *
+     * @param {string} name ref name
+     * @returns {*} the removed ref
+     */
+    unsetRef: name => unsetRef(name, typeId),
+    unsetAllRefs: () => {
+      const fullMap = getRefMap(typeId);
+      const list = [...fullMap.keys()];
+
+      for (const name of list) {
+        unsetRef(name, typeId);
+      }
+
+      fullMap.clear();
+    },
+    whenRef: name => whenRef(name, typeId),
+    whenNextRef: name => whenNextRef(name, typeId),
+    whenRefUnset: name => whenRefUnset(name, typeId),
+    createProxy: target => createRefProxy(api, target),
+  };
+
+  fnInit?.(api);
+
+  return api;
 };
-export { createRefProxy } from "./proxy.js";

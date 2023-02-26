@@ -1,11 +1,17 @@
 # Ref Central
 
-A ECMAScript module to store reference of any kind, be it class / objects / function / image / blob / file, you name it.
-Those are all referred `ref`.  
+A simple, __0 runtime dependencies__ ECMAScript module (ESM) library for lightning fast in-memory state I/O management.
 
-Leveraging native `Map` with function callbacks, The ref central allows accessing ref anywhere in your application, it aims to act as light-weight signal / pub-sub with data storage solution, it's Promise-friendly due to it's one-time callback nature, it's also performance proof due to it's simplicity. It's use case including but not limited to: resource loader, promise races / async-await, global variables, data storage with change / removal events in performance-focused application...
+`ref-central` is created to ease general purpose programing with unified interface, it's use case including but not limited to:
+  - pub/sub with state
+  - asynchronous I/O (Promise)
+  - synchronous key / value map
+  - mutation observer
+  - data cache with TTL
 
-Unlike famous frameworks, ref central does not provide plugin-like system or interface, but using it's iconic functions `getRef()`, `setRef()` and `removeRef()` alone already allows developer to create variety of extensions
+Leveraging native API supporting in both Web & NodeJS environments, in conjunction of `Map`, `Array` and `Proxy` with function callbacks, The ref-central allow accessing ref (data) anywhere in your application with just simple I/O operations
+
+Unlike famous frameworks, ref-central currently does not provide plugin-like system or interface, though it could be added in upcoming versions.
 
 ## Installation
 
@@ -13,141 +19,103 @@ Unlike famous frameworks, ref central does not provide plugin-like system or int
 npm install --save ref-central
 ```
 
-## Basic usage
+## Usage
 
-### setRef
+It starts with creating a ref-central instance
 
 ```javascript
-// a.js
-import { setRef } from "ref-central"
+import refCentral from "ref-central";
 
-console.log(setRef("customData", { payload: "anything I want to pass in!" }));
- // print { payload: "anything I want to pass in!" }
+// API from instance
+const {
+  typeId, // context ID
+  getRef,
+  getNextRef,
+  getUnsetRef,
+  setRef,
+  unsetRef,
+  unsetAllRefs,
+  whenRef,
+  whenRefUnset,
+  whenNextRef,
+  listenRef,
+  createProxy
+} = refCentral(); // Creates a ref central context
 ```
 
-### getRef
+### pub / sub
 
 ```javascript
-// b.js
-import './a.js';
-import { getRef } from "ref-central"
-
-const data = getRef("customData");
-console.log(data); // print { payload: "anything I want to pass in!" }
-```
-
-### removeRef
-```javascript
-import "./b.js";
-import { getRef, removeRef } from "ref-central";
-removeRef("customData");
-
-const data = getRef("customData");
-console.log(data); // null
-```
-
-This looks too simple and silly isn't it? lets look into an other example
-
-### one-time event listener
-
-```javascript
-// event-a.js
-...
-getRef("eventName", (evt) => {
-  console.log("event-a", evt); 
-});
-
-// event-b.js
-import "./event-a.js";
-
-getRef("eventName", (evt) => {
-  console.log("event-b", evt);
+const removeListener = listenRef("eventName", (data) => {
+  // called on `setRef()`
+  console.log(data); // { eventData: "some payload" }
 });
 
 ...
-setRef("eventName", { target: "some target", data: { ... }  })
 
-// prints 
-// event-a { target: "some target", data: { ... }  }
-// event-b { target: "some target", data: { ... }  }
+// `setRef()` serve as `dispatch()`
+setRef("eventName", { eventData: "some payload" });
+
+// You can even get the latest event data object by getRef
+console.log(getRef("eventName")); // { eventData: "some payload" }
 ```
 
-What's different between event listener and ref-central is, the former subscribe event permanently, the later subscribe only just once. The idea is to encourage write ___subscribing as necessary code___. If you need to subscribe `eventName` continously, just do this:
+### async I/O
 
 ```javascript
-import { getRef, getNextRef } from "ref-central";
 
-getRef("eventName", (ref, param, name, context) => {
-  getNextRef("eventName", context, RefTypes.Any, param); // subscribe to only next ref with context which is identical function to current callback
-}, RefTypes.Any);
-```
+// Some async process...
+setTimeout(() => {
+  setRef("asyncRef", { asyncResource: "async" }); 
+}, 100);
 
-### Promise
-
-```javascript
-// Forge your own
-new Promise((resolve) => { getRef("signal", resolve); })
-
-// Or use helper
-import { whenRef } from "ref-central";
-
-whenRef("someRef").then((ref) => {
-  // ...
+// You may use handy whenRef
+whenRef("asyncRef").then((ref) => {
+  console.log(ref); // { asyncResource: "async" }
 });
 
-(async() => {
-  const ref = await whenRef("someRef");
-  // ...
-})
+// or getRef()
+getRef("asyncRef", (ref) => {
+  console.log(ref); // { asyncResource: "async" }
+});
 ```
 
-You may also subscribe with promise to __only__ next `setRef()` with `whenNextRef()`, or when it's being removed by `removeRef()` with `whenRefRemoved()`
+### getRef, setRef, unsetRef, getNextRef
 
 ```javascript
-import { whenRefRemoved, whenNextRef } from "ref-central";
+console.log(getRef("customData", (ref) => {
+  console.log(ref); // a
+})); // null
 
-whenRefRemoved("refToBeRemoved").then((ref) => {
-  // Called when removeRef("refToBeRemoved") successfully removed the ref
-  // ...  
+getUnsetRef("customData", (ref) => {
+  console.log(ref); // d
 });
 
-whenNextRef("refToSetAgain").then((ref) => {
-  // Called when additional setRef("refToSetAgain") is called
-  // ...
+whenRefUnset("customData").then((ref) => {
+  console.log(ref); // d
 });
 
+setRef("customData", "a");
+getRef("customData", (ref) => {
+  console.log(ref); // a
+});
+getNextRef("customData", (ref) => {
+  console.log(ref); // b
+});
+setRef("customData", "b");
+setRef("customData", "c");
+setRef("customData", "d");
+unsetRef("customData");
+
+console.log(getRef("customData")); // null
 ```
 
-## Misc
-
-### RefTypes
-
-It's like channel to isolate scope of data storing or signaling, simply create your ref type and use whenever `refType` param is required. All refs are stored in `RefTypes.Any` when such field is not specified.  
-
-```javascript
-import { createRefType, RefTypes, getRef, setRef } from "ref-central";
-
-const newRefType = createRefType("MyRefType");
-
-setRef("refName", "first data set", newRefType);
-setRef("refName", "second data set");
-
-// ...
-const data = getRef("refName", null, newRefType);
-// or aternatively
-const data = getRef("refName", null, RefTypes.MyRefType);
-
-console.log(data); // "first data set"
-```
-
-### Proxy
+### proxy
 
 This is a syntax sugar helper leveraging native `Proxy` for ones who wants to use ref-central like normal object properties
 
 ```javascript
-import { getRef, createRefProxy } from "ref-central";
-
-const proxy = createRefProxy(); // default proxy to RefTypes.Any
+const proxy = createProxy(); // default proxy to RefTypes.Any
 
 proxy.refName = "whatever you like";
 
@@ -156,17 +124,16 @@ getRef("refName"); // "whatever you like"
 setRef("otherRefName", "ref-central awesome!")
 
 console.log(proxy.otherRefName); // "ref-central awesome!"
-
 ```
 
 ## Purpose definition
 
-- **Zero** install dependency, can be used as soon as imported
+- **Zero** run-time dependencies, can be used as soon as imported
 - **One** time callback
-- **Simple** as _key-value-pair_ `Map` objects
+- **Simple** as it should
 - Lightning fast I/O
 - Supports getting ref both sync and async
-- Categorize references by **ref types**, default `RefTypes.Any`
+- Isolated by context
 - Always return `null` instead of `undefined` when ref is not found
 
 
